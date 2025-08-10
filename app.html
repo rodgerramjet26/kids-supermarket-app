@@ -7,8 +7,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Supermarket Checkout">
   <title>Kids Supermarket Checkout — Play App</title>
+  <!-- QR Code Generation Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
-    :root{--bg:#f7fbff;--card:#ffffff;--accent:#2b9cff;--muted:#6b7280}
+    :root{--bg:#f7fbff;--card:#ffffff;--accent:#2b9cff;--muted:#6b7280;--green:#22c55e}
     *{box-sizing:border-box}
     body{font-family:system-ui,-apple-system,Segoe UI, Roboto, "Helvetica Neue", Arial; margin:0; background:linear-gradient(180deg,var(--bg),#eaf6ff); color:#0f172a}
     header{padding:16px 20px; display:flex; align-items:center; gap:12px}
@@ -28,11 +30,23 @@
     .qty button{padding:4px 8px;border-radius:6px;border:1px solid #d1e7ff;background:white;cursor:pointer}
     input[type=number], input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #d0d7de}
     .big{font-size:18px;font-weight:700}
-    .controls{display:flex;gap:8px}
-    .btn{padding:8px 10px;border-radius:8px;border:none;background:var(--accent);color:white;cursor:pointer}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .btn{padding:8px 10px;border-radius:8px;border:none;background:var(--accent);color:white;cursor:pointer;flex-grow:1;text-align:center}
     .btn.secondary{background:#6b7280}
+    .btn.qr{background:var(--green)}
     .receipt{white-space:pre-wrap;background:#fff;padding:10px;border-radius:8px;border:1px dashed #dbeafe;max-height:260px;overflow:auto}
     footer{font-size:12px;color:var(--muted);text-align:center;margin-top:12px}
+    
+    /* QR Modal Styles */
+    .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:1000}
+    .modal-content{background:white;padding:24px;border-radius:16px;box-shadow:0 10px 25px rgba(0,0,0,0.1);text-align:center;width:90%;max-width:320px}
+    .modal-content h2{margin-top:0;font-size:22px}
+    #qrcode{display:flex;justify-content:center;align-items:center;margin:16px auto;padding:16px;background:white;border-radius:8px;border:1px solid #eee}
+    #qrcode img{border-radius:4px}
+    .modal-total{font-size:24px;font-weight:700;margin-bottom:16px}
+    .modal-actions{display:flex;flex-direction:column;gap:10px}
+    #payment-success{color:var(--green);font-weight:700;display:none;margin-bottom:10px}
+
     @media (max-width:800px){.flex{flex-direction:column}.products{order:2}}
   </style>
 </head>
@@ -79,8 +93,9 @@
 
         <label style="font-size:13px;color:var(--muted)">Enter amount paid:</label>
         <input type="number" id="paidAmt" placeholder="0.00" min="0" step="0.01" />
-        <div style="margin-top:8px;display:flex;gap:8px">
+        <div style="margin-top:8px;" class="controls">
           <button class="btn" id="calcChange">Calculate Change</button>
+          <button class="btn qr" id="qrPayBtn">Pay with QR</button>
           <button class="btn secondary" id="exactBtn">Exact Pay</button>
         </div>
 
@@ -104,6 +119,21 @@
     <footer>Tip: use big round coins (emoji) for imaginative play — try paying with coins like 1, 5, 10, 20!</footer>
   </main>
 
+  <!-- QR Payment Modal -->
+  <div class="modal-overlay" id="qrModal">
+    <div class="modal-content">
+      <h2>Scan to Pay</h2>
+      <p style="font-size:14px;color:var(--muted);margin:0">Show this QR to the cashier!</p>
+      <div id="qrcode"></div>
+      <div class="modal-total" id="modalTotal"></div>
+      <div id="payment-success">Payment Successful! ✅</div>
+      <div class="modal-actions">
+        <button class="btn qr" id="confirmPaymentBtn">Confirm Payment</button>
+        <button class="btn secondary" id="closeModalBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // Product catalogue (name, price, emoji)
     const products = [
@@ -120,7 +150,9 @@
     ];
 
     let cart = [];
+    let qrcodeInstance = null;
 
+    // --- DOM Elements ---
     const productGrid = document.getElementById('productGrid');
     const cartList = document.getElementById('cartList');
     const totalEl = document.getElementById('total');
@@ -128,6 +160,12 @@
     const changeDisplay = document.getElementById('changeDisplay');
     const coinBreakdown = document.getElementById('coinBreakdown');
     const receiptEl = document.getElementById('receipt');
+    
+    // --- QR Modal Elements ---
+    const qrModal = document.getElementById('qrModal');
+    const qrcodeContainer = document.getElementById('qrcode');
+    const modalTotalEl = document.getElementById('modalTotal');
+    const paymentSuccessEl = document.getElementById('payment-success');
 
     function format(v){return '$' + v.toFixed(2)}
 
@@ -156,7 +194,7 @@
         const div = document.createElement('div'); div.className='cart-item';
         div.innerHTML = `<div style="display:flex;gap:8px;align-items:center"><div style="font-size:20px">${item.icon}</div><div><div style="font-weight:700">${item.name}</div><div style="font-size:13px;color:var(--muted)">${format(item.price)} each</div></div></div>`;
         const right = document.createElement('div');
-        right.innerHTML = `<div style="text-align:right"><div style="font-weight:700">${format(item.price*item.qty)}</div><div class="qty"><button data-action="dec">-</button><div style="min-width:22px;text-align:center">${item.qty}</div><button data-action="inc">+</button></div><button style="margin-top:6px" data-action="rem">Remove</button></div>`;
+        right.innerHTML = `<div style="text-align:right"><div style="font-weight:700">${format(item.price*item.qty)}</div><div class="qty"><button data-action="dec">-</button><div style="min-width:22px;text-align:center">${item.qty}</div><button data-action="inc">+</button></div><button style="margin-top:6px; padding: 2px 4px; font-size:12px;" data-action="rem">Remove</button></div>`;
         // events
         right.querySelectorAll('button').forEach(b=>{
           b.addEventListener('click',()=>{
@@ -180,14 +218,15 @@
       if(cart.length===0){receiptEl.textContent = 'No receipt yet.'; return}
       let lines = [];
       lines.push('*** Kids Checkout Receipt ***');
+      lines.push(new Date().toLocaleString());
       lines.push('');
       cart.forEach(i=> lines.push(`${i.qty} x ${i.name} ${' '.repeat(6)} ${format(i.price*i.qty)}`));
-      lines.push('');
+      lines.push('--------------------------');
       lines.push(`Total: ${format(total)}`);
       receiptEl.textContent = lines.join('\n');
     }
 
-    function calculateChange(){
+    function calculateChange(paymentMethod = 'Cash'){
       const total = cart.reduce((s,i)=>s + i.price * i.qty,0);
       const paid = parseFloat(paidAmt.value) || 0;
       const diff = +(paid - total).toFixed(2);
@@ -195,11 +234,10 @@
       changeDisplay.textContent = format(diff);
       coinBreakdown.textContent = breakdownCoins(diff);
       // update receipt with paid and change
-      let r = receiptEl.textContent + '\n\nPaid: ' + format(paid) + '\nChange: ' + format(diff)
+      let r = receiptEl.textContent + `\n\nPaid (${paymentMethod}): ${format(paid)}\nChange: ${format(diff)}`;
       receiptEl.textContent = r
     }
 
-    // simple coin breakdown in common USD-like denominations (customizable)
     function breakdownCoins(amount){
       let cents = Math.round(amount * 100);
       if(cents===0) return 'No change.';
@@ -216,17 +254,34 @@
       return parts.join(', ');
     }
 
-    // helpers
-    document.getElementById('calcChange').addEventListener('click',calculateChange);
+    function resetCheckoutState() {
+        paidAmt.value='';
+        changeDisplay.textContent='$0.00';
+        coinBreakdown.textContent='';
+        qrModal.style.display = 'none';
+    }
+
+    function startNewSale() {
+        cart=[];
+        renderCart();
+        resetCheckoutState();
+        receiptEl.textContent='No receipt yet.';
+    }
+
+    // --- Event Listeners ---
+    document.getElementById('calcChange').addEventListener('click', () => calculateChange('Cash'));
     document.getElementById('exactBtn').addEventListener('click',()=>{
-      // pay exact total by setting paid to total
       const total = cart.reduce((s,i)=>s + i.price * i.qty,0);
       paidAmt.value = total.toFixed(2);
-      calculateChange();
+      calculateChange('Exact Cash');
     });
 
-    document.getElementById('clearCart').addEventListener('click',()=>{cart=[];renderCart();paidAmt.value='';changeDisplay.textContent='$0.00';coinBreakdown.textContent='';});
-    document.getElementById('newSale').addEventListener('click',()=>{cart=[];renderCart();paidAmt.value='';changeDisplay.textContent='$0.00';coinBreakdown.textContent='';receiptEl.textContent='No receipt yet.'});
+    document.getElementById('clearCart').addEventListener('click',()=> {
+        cart=[];
+        renderCart();
+        resetCheckoutState();
+    });
+    document.getElementById('newSale').addEventListener('click', startNewSale);
 
     document.getElementById('addCustom').addEventListener('click',()=>{
       const name = document.getElementById('customName').value.trim();
@@ -240,11 +295,58 @@
     });
 
     document.getElementById('printBtn').addEventListener('click',()=>{
-      // open a printable window
       const w = window.open('', '_blank');
-      const html = `<!doctype html><html><head><title>Receipt</title><meta charset="utf-8"></head><body><pre>${receiptEl.textContent}</pre></body></html>`;
+      const html = `<!doctype html><html><head><title>Receipt</title><meta charset="utf-8"></head><body><pre style="font-family:monospace; font-size:14px;">${receiptEl.textContent}</pre></body></html>`;
       w.document.write(html); w.document.close();
       w.print();
+    });
+
+    // --- QR Payment Logic ---
+    document.getElementById('qrPayBtn').addEventListener('click', () => {
+        const total = cart.reduce((s,i)=>s + i.price * i.qty,0);
+        if (total <= 0) {
+            alert("Please add items to the cart first!");
+            return;
+        }
+        
+        // Reset modal state
+        paymentSuccessEl.style.display = 'none';
+        document.getElementById('confirmPaymentBtn').style.display = 'block';
+
+        modalTotalEl.textContent = format(total);
+        qrModal.style.display = 'flex';
+        
+        qrcodeContainer.innerHTML = ''; // Clear previous QR
+        // For a toy app, the QR content can be simple.
+        // A real Thai QR would have a complex payload.
+        const qrPayload = `PROMPTPAY-KIDS\nAMOUNT:${total.toFixed(2)}`;
+        qrcodeInstance = new QRCode(qrcodeContainer, {
+            text: qrPayload,
+            width: 200,
+            height: 200,
+            colorDark : "#000000",
+            colorLight : "#ffffff",
+            correctLevel : QRCode.CorrectLevel.H
+        });
+    });
+
+    document.getElementById('closeModalBtn').addEventListener('click', () => {
+        qrModal.style.display = 'none';
+    });
+
+    document.getElementById('confirmPaymentBtn').addEventListener('click', () => {
+        const total = cart.reduce((s,i)=>s + i.price * i.qty,0);
+        paidAmt.value = total.toFixed(2);
+        
+        // Show success message
+        paymentSuccessEl.style.display = 'block';
+        document.getElementById('confirmPaymentBtn').style.display = 'none';
+
+        // Update the main UI after a short delay
+        setTimeout(() => {
+            calculateChange('QR Payment');
+            qrModal.style.display = 'none';
+        }, 1500); // Wait 1.5 seconds to show the success message
     });
 
     // keyboard shortcuts for fun
