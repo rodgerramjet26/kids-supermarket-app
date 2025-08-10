@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Kids Supermarket Checkout — Play App</title>
+  <style>
+    :root{--bg:#f7fbff;--card:#ffffff;--accent:#2b9cff;--muted:#6b7280}
+    *{box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,Segoe UI, Roboto, "Helvetica Neue", Arial; margin:0; background:linear-gradient(180deg,var(--bg),#eaf6ff); color:#0f172a}
+    header{padding:16px 20px; display:flex; align-items:center; gap:12px}
+    h1{font-size:20px;margin:0}
+    .container{max-width:980px;margin:12px auto;padding:12px}
+    .flex{display:flex;gap:12px}
+    .products, .checkout{background:var(--card);border-radius:12px;padding:12px;box-shadow:0 6px 18px rgba(11,38,63,0.06)}
+    .products{flex:2}
+    .checkout{flex:1;min-width:280px}
+    .product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+    .product{border-radius:10px;padding:8px;background:linear-gradient(180deg,#fff,#fbfdff);display:flex;flex-direction:column;align-items:center;gap:8px;border:1px solid #e6eef7}
+    .product button{background:var(--accent);color:white;border:none;padding:6px 8px;border-radius:8px;cursor:pointer}
+    .product .price{font-weight:700}
+    .cart-list{max-height:320px;overflow:auto;margin-bottom:8px}
+    .cart-item{display:flex;justify-content:space-between;gap:8px;padding:8px;border-radius:8px;background:#f8fbff;margin-bottom:6px;align-items:center}
+    .qty{display:inline-flex;align-items:center;gap:6px}
+    .qty button{padding:4px 8px;border-radius:6px;border:1px solid #d1e7ff;background:white;cursor:pointer}
+    input[type=number], input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #d0d7de}
+    .big{font-size:18px;font-weight:700}
+    .controls{display:flex;gap:8px}
+    .btn{padding:8px 10px;border-radius:8px;border:none;background:var(--accent);color:white;cursor:pointer}
+    .btn.secondary{background:#6b7280}
+    .receipt{white-space:pre-wrap;background:#fff;padding:10px;border-radius:8px;border:1px dashed #dbeafe;max-height:260px;overflow:auto}
+    footer{font-size:12px;color:var(--muted);text-align:center;margin-top:12px}
+    @media (max-width:800px){.flex{flex-direction:column}.products{order:2}}
+  </style>
+</head>
+<body>
+  <header>
+    <div style="font-size:28px">🛒</div>
+    <div>
+      <h1>Kids Supermarket Checkout — Play App</h1>
+      <div style="font-size:12px;color:var(--muted)">Choose products, enter money, get change — pretend play!</div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="flex">
+      <section class="products">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong>Products</strong>
+          <div style="font-size:13px;color:var(--muted)">Tap "Add" to put into cart</div>
+        </div>
+
+        <div class="product-grid" id="productGrid"></div>
+
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+          <input id="customName" type="text" placeholder="Custom item name (e.g. Cookie)" />
+          <input id="customPrice" type="number" placeholder="Price" min="0" step="0.01" />
+          <button class="btn" id="addCustom">Add custom</button>
+        </div>
+      </section>
+
+      <aside class="checkout">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong>Checkout</strong>
+          <button class="btn secondary" id="clearCart">Clear</button>
+        </div>
+
+        <div class="cart-list" id="cartList">
+          <div style="color:var(--muted);font-size:13px">Cart is empty</div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div>Total:</div>
+          <div class="big" id="total">$0.00</div>
+        </div>
+
+        <label style="font-size:13px;color:var(--muted)">Enter amount paid:</label>
+        <input type="number" id="paidAmt" placeholder="0.00" min="0" step="0.01" />
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn" id="calcChange">Calculate Change</button>
+          <button class="btn secondary" id="exactBtn">Exact Pay</button>
+        </div>
+
+        <div style="margin-top:12px">
+          <div style="font-weight:700">Change:</div>
+          <div id="changeDisplay" style="font-size:16px;color:#065f46;margin-top:6px">$0.00</div>
+          <div id="coinBreakdown" style="margin-top:6px;color:var(--muted);font-size:13px"></div>
+        </div>
+
+        <div style="margin-top:12px">
+          <div style="font-weight:700;margin-bottom:6px">Receipt</div>
+          <div class="receipt" id="receipt">No receipt yet.</div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn" id="printBtn">Print / Save</button>
+            <button class="btn secondary" id="newSale">New Sale</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <footer>Tip: use big round coins (emoji) for imaginative play — try paying with coins like 1, 5, 10, 20!</footer>
+  </main>
+
+  <script>
+    // Product catalogue (name, price, emoji)
+    const products = [
+      {id:1,name:'Apple',price:0.60,icon:'🍎'},
+      {id:2,name:'Banana',price:0.40,icon:'🍌'},
+      {id:3,name:'Milk',price:1.20,icon:'🥛'},
+      {id:4,name:'Bread',price:1.50,icon:'🍞'},
+      {id:5,name:'Eggs (6)',price:2.10,icon:'🥚'},
+      {id:6,name:'Cookie',price:0.80,icon:'🍪'},
+      {id:7,name:'Juice',price:1.00,icon:'🧃'},
+      {id:8,name:'Cereal',price:3.20,icon:'🥣'},
+      {id:9,name:'Cheese',price:2.50,icon:'🧀'},
+      {id:10,name:'Toy Car',price:4.00,icon:'🚗'}
+    ];
+
+    let cart = [];
+
+    const productGrid = document.getElementById('productGrid');
+    const cartList = document.getElementById('cartList');
+    const totalEl = document.getElementById('total');
+    const paidAmt = document.getElementById('paidAmt');
+    const changeDisplay = document.getElementById('changeDisplay');
+    const coinBreakdown = document.getElementById('coinBreakdown');
+    const receiptEl = document.getElementById('receipt');
+
+    function format(v){return '$' + v.toFixed(2)}
+
+    function renderProducts(){
+      productGrid.innerHTML = '';
+      products.forEach(p=>{
+        const el = document.createElement('div'); el.className='product';
+        el.innerHTML = `<div style="font-size:28px">${p.icon}</div><div style="text-align:center"><div>${p.name}</div><div class="price">${format(p.price)}</div></div>`;
+        const btn = document.createElement('button'); btn.textContent='Add';
+        btn.addEventListener('click',()=>addToCart(p));
+        el.appendChild(btn);
+        productGrid.appendChild(el);
+      });
+    }
+
+    function addToCart(product){
+      const found = cart.find(c=>c.id===product.id);
+      if(found){found.qty += 1;} else {cart.push({...product, qty:1});}
+      renderCart();
+    }
+
+    function renderCart(){
+      cartList.innerHTML = '';
+      if(cart.length===0){cartList.innerHTML = '<div style="color:var(--muted);font-size:13px">Cart is empty</div>'; updateTotals(); return}
+      cart.forEach(item=>{
+        const div = document.createElement('div'); div.className='cart-item';
+        div.innerHTML = `<div style="display:flex;gap:8px;align-items:center"><div style="font-size:20px">${item.icon}</div><div><div style="font-weight:700">${item.name}</div><div style="font-size:13px;color:var(--muted)">${format(item.price)} each</div></div></div>`;
+        const right = document.createElement('div');
+        right.innerHTML = `<div style="text-align:right"><div style="font-weight:700">${format(item.price*item.qty)}</div><div class="qty"><button data-action="dec">-</button><div style="min-width:22px;text-align:center">${item.qty}</div><button data-action="inc">+</button></div><button style="margin-top:6px" data-action="rem">Remove</button></div>`;
+        // events
+        right.querySelectorAll('button').forEach(b=>{
+          b.addEventListener('click',()=>{
+            const act = b.getAttribute('data-action');
+            if(act==='inc'){item.qty +=1}
+            if(act==='dec'){item.qty = Math.max(1,item.qty-1)}
+            if(act==='rem'){cart = cart.filter(c=>c!==item)}
+            renderCart();
+          })
+        })
+        div.appendChild(right);
+        cartList.appendChild(div);
+      })
+      updateTotals();
+    }
+
+    function updateTotals(){
+      const total = cart.reduce((s,i)=>s + i.price * i.qty,0);
+      totalEl.textContent = format(total);
+      // update receipt preview
+      if(cart.length===0){receiptEl.textContent = 'No receipt yet.'; return}
+      let lines = [];
+      lines.push('*** Kids Checkout Receipt ***');
+      lines.push('');
+      cart.forEach(i=> lines.push(`${i.qty} x ${i.name} ${' '.repeat(6)} ${format(i.price*i.qty)}`));
+      lines.push('');
+      lines.push(`Total: ${format(total)}`);
+      receiptEl.textContent = lines.join('\n');
+    }
+
+    function calculateChange(){
+      const total = cart.reduce((s,i)=>s + i.price * i.qty,0);
+      const paid = parseFloat(paidAmt.value) || 0;
+      const diff = +(paid - total).toFixed(2);
+      if(diff < 0){changeDisplay.textContent = 'Not enough money — needs ' + format(Math.abs(diff)); coinBreakdown.textContent=''; return}
+      changeDisplay.textContent = format(diff);
+      coinBreakdown.textContent = breakdownCoins(diff);
+      // update receipt with paid and change
+      let r = receiptEl.textContent + '\n\nPaid: ' + format(paid) + '\nChange: ' + format(diff)
+      receiptEl.textContent = r
+    }
+
+    // simple coin breakdown in common USD-like denominations (customizable)
+    function breakdownCoins(amount){
+      let cents = Math.round(amount * 100);
+      if(cents===0) return 'No change.';
+      const coins = [10000,5000,2000,1000,500,100,50,25,10,5,1]; // include bills (100.00.. 1 cent)
+      const coinNames = {10000:'$100',5000:'$50',2000:'$20',1000:'$10',500:'$5',100:'$1',50:'50¢',25:'25¢',10:'10¢',5:'5¢',1:'1¢'};
+      let parts = [];
+      for(const c of coins){
+        if(cents>=c){
+          const q = Math.floor(cents/c);
+          cents -= q*c;
+          parts.push(`${q} x ${coinNames[c]}`)
+        }
+      }
+      return parts.join(', ');
+    }
+
+    // helpers
+    document.getElementById('calcChange').addEventListener('click',calculateChange);
+    document.getElementById('exactBtn').addEventListener('click',()=>{
+      // pay exact total by setting paid to total
+      const total = cart.reduce((s,i)=>s + i.price * i.qty,0);
+      paidAmt.value = total.toFixed(2);
+      calculateChange();
+    });
+
+    document.getElementById('clearCart').addEventListener('click',()=>{cart=[];renderCart();paidAmt.value='';changeDisplay.textContent='$0.00';coinBreakdown.textContent='';});
+    document.getElementById('newSale').addEventListener('click',()=>{cart=[];renderCart();paidAmt.value='';changeDisplay.textContent='$0.00';coinBreakdown.textContent='';receiptEl.textContent='No receipt yet.'});
+
+    document.getElementById('addCustom').addEventListener('click',()=>{
+      const name = document.getElementById('customName').value.trim();
+      const price = parseFloat(document.getElementById('customPrice').value);
+      if(!name || isNaN(price) || price<0){alert('Please enter a name and valid price for the custom item.'); return}
+      const id = Date.now();
+      const icon = '🍭';
+      products.push({id,name,price,icon});
+      document.getElementById('customName').value=''; document.getElementById('customPrice').value='';
+      renderProducts();
+    });
+
+    document.getElementById('printBtn').addEventListener('click',()=>{
+      // open a printable window
+      const w = window.open('', '_blank');
+      const html = `<!doctype html><html><head><title>Receipt</title><meta charset="utf-8"></head><body><pre>${receiptEl.textContent}</pre></body></html>`;
+      w.document.write(html); w.document.close();
+      w.print();
+    });
+
+    // keyboard shortcuts for fun
+    window.addEventListener('keydown',e=>{
+      if(e.key==='c' && e.ctrlKey){ e.preventDefault(); document.getElementById('calcChange').click(); }
+    });
+
+    // initial render
+    renderProducts(); renderCart();
+  </script>
+</body>
+</html>
